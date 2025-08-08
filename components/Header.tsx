@@ -18,7 +18,8 @@ import { EthereumPrivateKeyProvider } from "@web3auth/ethereum-provider"
 import { useMediaQuery } from "@/hooks/useMediaQuery"
 import { createUser, getUnreadNotifications, markNotificationAsRead, getUserByEmail, getUserBalance } from "@/utils/db/actions"
 
-const clientId = "BJKdDFkNtkWX87XqkuWrDu4rbkSvWyQZ5lswS0ucINxxcN0inRVW8zzKAywPPzgiOHP7_3PcfFwfpvcQvSdaLRs";
+//const clientId = "BJKdDFkNtkWX87XqkuWrDu4rbkSvWyQZ5lswS0ucINxxcN0inRVW8zzKAywPPzgiOHP7_3PcfFwfpvcQvSdaLRs";
+const clientId = "BGyxI-wfyAjbHURKNdWNOcHQYA4hhJ9EZ8E5n0jAo7p07N31hdaMA3LUC9oVzuComojU6P-2vYyvUwmbj1FKNVs";
 
 const chainConfig = {
   chainNamespace: CHAIN_NAMESPACES.EIP155,
