@@ -35,10 +35,10 @@ export default function SettingsPage() {
           const userData = await getUserByEmail(userEmail)
           if (userData) {
             setUser(userData)
-            
+
             // Get profile data
             const profileData = await getUserProfile(userData.id)
-            
+
             setSettings({
               name: userData.name || '',
               email: userData.email || '',
@@ -95,7 +95,7 @@ export default function SettingsPage() {
       if (settings.name !== user.name) {
         await updateUserName(user.id, settings.name)
       }
-      
+
       // Update profile data in UserProfiles table
       await updateUserProfile(user.id, {
         phone: settings.phone,
@@ -103,8 +103,10 @@ export default function SettingsPage() {
         notifications: settings.notifications,
         profileImage: settings.profileImage
       })
-      
+
       toast.success('Settings updated successfully!')
+      // Trigger a custom event to notify the Header component
+      window.dispatchEvent(new CustomEvent('userNameUpdated', { detail: settings.name }));
     } catch (error) {
       console.error('Error updating settings:', error)
       toast.error('Failed to update settings')
@@ -124,7 +126,7 @@ export default function SettingsPage() {
   return (
     <div className="p-4 sm:p-8 max-w-2xl mx-auto">
       <h1 className="text-2xl sm:text-3xl font-semibold mb-6 text-gray-800">Account Settings</h1>
-      
+
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Profile Image */}
         <div className="flex flex-col items-center mb-6">
@@ -231,8 +233,8 @@ export default function SettingsPage() {
           </label>
         </div>
 
-        <Button 
-          type="submit" 
+        <Button
+          type="submit"
           className="w-full bg-green-500 hover:bg-green-600 text-white"
           disabled={saving}
         >

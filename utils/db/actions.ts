@@ -351,7 +351,11 @@ export async function getAllRewards() {
         return transaction.type.startsWith('earned') ? acc + transaction.amount : acc - transaction.amount;
       }, 0);
 
-      if (totalPoints > 0) {
+      const reports = await getReportsByUserId(user.id);
+      const collected = await getCollectedWastesByCollector(user.id);
+
+      // Only include users who have some activity
+      if (totalPoints > 0 || reports.length > 0 || collected.length > 0) {
         leaderboardData.push({
           id: user.id,
           userId: user.id,
@@ -359,11 +363,14 @@ export async function getAllRewards() {
           level: Math.floor(totalPoints / 100) + 1, // Level based on points
           createdAt: user.createdAt,
           userName: user.name,
+          // New fields
+          reportCount: reports.length,
+          collectCount: collected.length,
         });
       }
     }
 
-    // Sort by points in descending order
+    // Default sort by points in descending order for backward compatibility
     leaderboardData.sort((a, b) => b.points - a.points);
 
     return leaderboardData;

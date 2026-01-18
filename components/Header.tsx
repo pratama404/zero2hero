@@ -57,8 +57,7 @@ export default function Header({ onMenuClick, totalEarnings }: HeaderProps) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const isMobile = useMediaQuery("(max-width: 768px)")
   const [balance, setBalance] = useState(0)
-
-
+  const [userName, setUserName] = useState<string>('')
 
   useEffect(() => {
     const init = async () => {
@@ -77,10 +76,17 @@ export default function Header({ onMenuClick, totalEarnings }: HeaderProps) {
           setLoggedIn(true);
           const user = await web3auth.getUserInfo();
           setUserInfo(user);
+          // Set initial name from Web3Auth
+          setUserName(user.name || '');
+
           if (user.email) {
             localStorage.setItem('userEmail', user.email);
             try {
-              await createUser(user.email, user.name || 'Anonymous User');
+              const dbUser = await createUser(user.email, user.name || 'Anonymous User');
+              // Update name if it exists in DB
+              if (dbUser && dbUser.name) {
+                setUserName(dbUser.name);
+              }
             } catch (error) {
               console.error("Error creating user:", error);
             }
@@ -95,6 +101,21 @@ export default function Header({ onMenuClick, totalEarnings }: HeaderProps) {
 
     init();
   }, []);
+
+  // Listen for user name updates
+  useEffect(() => {
+    const handleUserNameUpdate = (event: CustomEvent) => {
+      setUserName(event.detail);
+    };
+
+    window.addEventListener('userNameUpdated', handleUserNameUpdate as EventListener);
+
+    return () => {
+      window.removeEventListener('userNameUpdated', handleUserNameUpdate as EventListener);
+    };
+  }, []);
+
+
 
   useEffect(() => {
     const fetchNotifications = async () => {
@@ -298,7 +319,7 @@ export default function Header({ onMenuClick, totalEarnings }: HeaderProps) {
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem onClick={getUserInfo}>
-                  {userInfo ? userInfo.name : "Fetch User Info"}
+                  {userName || "Fetch User Info"}
                 </DropdownMenuItem>
                 <DropdownMenuItem>
                   <Link href="/settings">Profile</Link>
