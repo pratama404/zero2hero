@@ -11,6 +11,12 @@ import { toast } from 'react-hot-toast'
 
 // ... imports
 
+const poppins = Poppins({
+  weight: ['300', '400', '600'],
+  subsets: ['latin'],
+  display: 'swap',
+})
+
 export default function Home() {
   const [loggedIn, setLoggedIn] = useState(false);
   const [impactData, setImpactData] = useState({
