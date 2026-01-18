@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { Trash2, MapPin, CheckCircle, Clock, ArrowRight, Camera, Upload, Loader, Calendar, Weight, Search } from 'lucide-react'
+import { Trash2, MapPin, CheckCircle, Clock, Upload, Loader, Calendar, Weight, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { toast } from 'react-hot-toast'
@@ -71,7 +71,6 @@ export default function CollectPage() {
     quantityMatch: boolean;
     confidence: number;
   } | null>(null)
-  const [reward, setReward] = useState<number | null>(null)
 
   const handleStatusChange = async (taskId: number, newStatus: CollectionTask['status']) => {
     if (!user) {
@@ -250,7 +249,6 @@ export default function CollectPage() {
           // Save the collected waste
           await saveCollectedWaste(selectedTask.id, user.id, parsedResult)
 
-          setReward(earnedReward)
           toast.success(`Verification successful! You earned ${earnedReward} tokens!`, {
             duration: 5000,
             position: 'top-center',
@@ -262,7 +260,7 @@ export default function CollectPage() {
           })
         }
       } catch (error) {
-        console.error('Failed to parse JSON response:', text)
+        console.error('Failed to parse JSON response:', error)
         setVerificationStatus('failure')
       }
     } catch (error) {

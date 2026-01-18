@@ -1,4 +1,4 @@
-import { sql } from '@neondatabase/serverless';
+import { sql } from 'drizzle-orm';
 import { db } from './dbConfig';
 
 export async function createUserProfilesTable() {
