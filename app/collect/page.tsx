@@ -61,6 +61,7 @@ export default function CollectPage() {
     }
 
     fetchUserAndTasks()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const [selectedTask, setSelectedTask] = useState<CollectionTask | null>(null)
@@ -109,86 +110,7 @@ export default function CollectPage() {
     return dataUrl.split(',')[1]
   }
 
-  // const handleVerify = async () => {
-  //   if (!selectedTask || !verificationImage || !user) {
-  //     toast.error('Missing required information for verification.')
-  //     return
-  //   }
 
-  //   setVerificationStatus('verifying')
-
-  //   try {
-  //     const genAI = new GoogleGenerativeAI(geminiApiKey!)
-  //     const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" })
-
-  //     const base64Data = readFileAsBase64(verificationImage)
-
-  //     const imageParts = [
-  //       {
-  //         inlineData: {
-  //           data: base64Data,
-  //           mimeType: 'image/jpeg', // Adjust this if you know the exact type
-  //         },
-  //       },
-  //     ]
-
-  //     const prompt = `You are an expert in waste management and recycling. Analyze this image and provide:
-  //       1. Confirm if the waste type matches: ${selectedTask.wasteType}
-  //       2. Estimate if the quantity matches: ${selectedTask.amount}
-  //       3. Your confidence level in this assessment (as a percentage)
-
-  //       Respond in JSON format like this:
-  //       {
-  //         "wasteTypeMatch": true/false,
-  //         "quantityMatch": true/false,
-  //         "confidence": confidence level as a number between 0 and 1
-  //       }`
-
-  //     const result = await model.generateContent([prompt, ...imageParts])
-  //     const response = await result.response
-  //     const text = response.text()
-
-  //     try {
-  //       const parsedResult = JSON.parse(text)
-  //       setVerificationResult({
-  //         wasteTypeMatch: parsedResult.wasteTypeMatch,
-  //         quantityMatch: parsedResult.quantityMatch,
-  //         confidence: parsedResult.confidence
-  //       })
-  //       setVerificationStatus('success')
-
-  //       if (parsedResult.wasteTypeMatch && parsedResult.quantityMatch && parsedResult.confidence > 0.7) {
-  //         await handleStatusChange(selectedTask.id, 'verified')
-  //         const earnedReward = Math.floor(Math.random() * 50) + 10 // Random reward between 10 and 59
-
-  //         // Save the reward
-  //         await saveReward(user.id, earnedReward)
-
-  //         // Save the collected waste
-  //         await saveCollectedWaste(selectedTask.id, user.id, parsedResult)
-
-  //         setReward(earnedReward)
-  //         toast.success(`Verification successful! You earned ${earnedReward} tokens!`, {
-  //           duration: 5000,
-  //           position: 'top-center',
-  //         })
-  //       } else {
-  //         toast.error('Verification failed. The collected waste does not match the reported waste.', {
-  //           duration: 5000,
-  //           position: 'top-center',
-  //         })
-  //       }
-  //     } catch (error) {
-  //       console.log(error);
-
-  //       console.error('Failed to parse JSON response:', text)
-  //       setVerificationStatus('failure')
-  //     }
-  //   } catch (error) {
-  //     console.error('Error verifying waste:', error)
-  //     setVerificationStatus('failure')
-  //   }
-  // }
   const handleVerify = async () => {
     if (!selectedTask || !verificationImage || !user) {
       toast.error('Missing required information for verification.')
