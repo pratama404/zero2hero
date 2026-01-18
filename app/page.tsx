@@ -5,25 +5,11 @@ import { ArrowRight, Leaf, Recycle, Users, Coins, MapPin, ChevronRight } from 'l
 import { Button } from '@/components/ui/button'
 import { Poppins } from 'next/font/google'
 import Link from 'next/link'
-import ContractInteraction from '@/components/ContractInteraction'
-import { getRecentReports, getAllRewards, getWasteCollectionTasks } from '@/utils/db/actions'
-const poppins = Poppins({ 
-  weight: ['300', '400', '600'],
-  subsets: ['latin'],
-  display: 'swap',
-})
 
-function AnimatedGlobe() {
-  return (
-    <div className="relative w-32 h-32 mx-auto mb-8">
-      <div className="absolute inset-0 rounded-full bg-green-500 opacity-20 animate-pulse"></div>
-      <div className="absolute inset-2 rounded-full bg-green-400 opacity-40 animate-ping"></div>
-      <div className="absolute inset-4 rounded-full bg-green-300 opacity-60 animate-spin"></div>
-      <div className="absolute inset-6 rounded-full bg-green-200 opacity-80 animate-bounce"></div>
-      <Leaf className="absolute inset-0 m-auto h-16 w-16 text-green-600 animate-pulse" />
-    </div>
-  )
-}
+import { getRecentReports, getAllRewards, getWasteCollectionTasks, getUserByEmail, getReportsByUserId, getCollectedWastesByCollector, getUserBalance } from '@/utils/db/actions'
+import { toast } from 'react-hot-toast'
+
+// ... imports
 
 export default function Home() {
   const [loggedIn, setLoggedIn] = useState(false);
@@ -33,15 +19,19 @@ export default function Home() {
     tokensEarned: 0,
     co2Offset: 0
   });
-
-  
+  const [userImpact, setUserImpact] = useState({
+    balance: 0,
+    reportsSubmitted: 0,
+    wasteCollected: 0,
+    co2Offset: 0
+  });
 
   useEffect(() => {
     async function fetchImpactData() {
       try {
-        const reports = await getRecentReports(100);  // Fetch last 100 reports
+        const reports = await getRecentReports(100);
         const rewards = await getAllRewards();
-        const tasks = await getWasteCollectionTasks(100);  // Fetch last 100 tasks
+        const tasks = await getWasteCollectionTasks(100);
 
         const wasteCollected = tasks.reduce((total, task) => {
           const match = task.amount.match(/(\d+(\.\d+)?)/);
@@ -51,17 +41,16 @@ export default function Home() {
 
         const reportsSubmitted = reports.length;
         const tokensEarned = rewards.reduce((total, reward) => total + (reward.points || 0), 0);
-        const co2Offset = wasteCollected * 0.5;  // Assuming 0.5 kg CO2 offset per kg of waste
+        const co2Offset = wasteCollected * 0.5;
 
         setImpactData({
-          wasteCollected: Math.round(wasteCollected * 10) / 10, // Round to 1 decimal place
+          wasteCollected: Math.round(wasteCollected * 10) / 10,
           reportsSubmitted,
           tokensEarned,
-          co2Offset: Math.round(co2Offset * 10) / 10 // Round to 1 decimal place
+          co2Offset: Math.round(co2Offset * 10) / 10
         });
       } catch (error) {
         console.error("Error fetching impact data:", error);
-        // Set default values in case of error
         setImpactData({
           wasteCollected: 0,
           reportsSubmitted: 0,
@@ -72,6 +61,41 @@ export default function Home() {
     }
 
     fetchImpactData();
+  }, []);
+
+  useEffect(() => {
+    const checkLoginAndFetchUserImpact = async () => {
+      const userEmail = localStorage.getItem('userEmail');
+      if (userEmail) {
+        setLoggedIn(true);
+        try {
+          const user = await getUserByEmail(userEmail);
+          if (user) {
+            // Parallelize data fetching
+            const [reports, collectedWastes, balance] = await Promise.all([
+              getReportsByUserId(user.id),
+              getCollectedWastesByCollector(user.id),
+              getUserBalance(user.id)
+            ]);
+
+            const wasteCollected = collectedWastes.length * 5; // Assuming 5kg avg per collection for simplicity
+            const reportsSubmitted = reports.length;
+            const co2Offset = wasteCollected * 0.5;
+
+            setUserImpact({
+              balance,
+              reportsSubmitted,
+              wasteCollected,
+              co2Offset
+            });
+          }
+        } catch (error) {
+          console.error("Error fetching user impact:", error);
+        }
+      }
+    };
+
+    checkLoginAndFetchUserImpact();
   }, []);
 
   const login = () => {
@@ -102,7 +126,7 @@ export default function Home() {
           </Link>
         )}
       </section>
-      
+
       <section className="grid md:grid-cols-3 gap-10 mb-20">
         <FeatureCard
           icon={Leaf}
@@ -120,7 +144,7 @@ export default function Home() {
           description="Be part of a growing community committed to sustainable practices."
         />
       </section>
-      
+
       <section className="bg-white p-10 rounded-3xl shadow-lg mb-20">
         <h2 className="text-4xl font-bold mb-12 text-center text-gray-800">Our Impact</h2>
         <div className="grid md:grid-cols-4 gap-6">
@@ -131,14 +155,24 @@ export default function Home() {
         </div>
       </section>
 
-   
+      {loggedIn && (
+        <section className="bg-green-50 p-10 rounded-3xl shadow-lg mb-20 border border-green-100">
+          <h2 className="text-4xl font-bold mb-12 text-center text-green-800">Your Personal Impact</h2>
+          <div className="grid md:grid-cols-4 gap-6">
+            <ImpactCard title="Your Balance" value={userImpact.balance.toString()} icon={Coins} />
+            <ImpactCard title="Reports Submitted" value={userImpact.reportsSubmitted.toString()} icon={MapPin} />
+            <ImpactCard title="Waste Collected" value={`${userImpact.wasteCollected} kg`} icon={Recycle} />
+            <ImpactCard title="CO2 Offset" value={`${userImpact.co2Offset} kg`} icon={Leaf} />
+          </div>
+        </section>
+      )}
     </div>
   )
 }
 
 function ImpactCard({ title, value, icon: Icon }: { title: string; value: string | number; icon: React.ElementType }) {
   const formattedValue = typeof value === 'number' ? value.toLocaleString('en-US', { maximumFractionDigits: 1 }) : value;
-  
+
   return (
     <div className="p-6 rounded-xl bg-gray-50 border border-gray-100 transition-all duration-300 ease-in-out hover:shadow-md">
       <Icon className="h-10 w-10 text-green-500 mb-4" />

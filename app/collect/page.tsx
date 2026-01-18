@@ -82,7 +82,7 @@ export default function CollectPage() {
     try {
       const updatedTask = await updateTaskStatus(taskId, newStatus, user.id)
       if (updatedTask) {
-        setTasks(tasks.map(task => 
+        setTasks(tasks.map(task =>
           task.id === taskId ? { ...task, status: newStatus, collectorId: user.id } : task
         ))
         toast.success('Task status updated successfully')
@@ -117,7 +117,7 @@ export default function CollectPage() {
   //   }
 
   //   setVerificationStatus('verifying')
-    
+
   //   try {
   //     const genAI = new GoogleGenerativeAI(geminiApiKey!)
   //     const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" })
@@ -137,7 +137,7 @@ export default function CollectPage() {
   //       1. Confirm if the waste type matches: ${selectedTask.wasteType}
   //       2. Estimate if the quantity matches: ${selectedTask.amount}
   //       3. Your confidence level in this assessment (as a percentage)
-        
+
   //       Respond in JSON format like this:
   //       {
   //         "wasteTypeMatch": true/false,
@@ -148,7 +148,7 @@ export default function CollectPage() {
   //     const result = await model.generateContent([prompt, ...imageParts])
   //     const response = await result.response
   //     const text = response.text()
-      
+
   //     try {
   //       const parsedResult = JSON.parse(text)
   //       setVerificationResult({
@@ -157,11 +157,11 @@ export default function CollectPage() {
   //         confidence: parsedResult.confidence
   //       })
   //       setVerificationStatus('success')
-        
+
   //       if (parsedResult.wasteTypeMatch && parsedResult.quantityMatch && parsedResult.confidence > 0.7) {
   //         await handleStatusChange(selectedTask.id, 'verified')
   //         const earnedReward = Math.floor(Math.random() * 50) + 10 // Random reward between 10 and 59
-          
+
   //         // Save the reward
   //         await saveReward(user.id, earnedReward)
 
@@ -181,7 +181,7 @@ export default function CollectPage() {
   //       }
   //     } catch (error) {
   //       console.log(error);
-        
+
   //       console.error('Failed to parse JSON response:', text)
   //       setVerificationStatus('failure')
   //     }
@@ -192,92 +192,85 @@ export default function CollectPage() {
   // }
   const handleVerify = async () => {
     if (!selectedTask || !verificationImage || !user) {
-      toast.error('Missing required information for verification.');
-      return;
+      toast.error('Missing required information for verification.')
+      return
     }
-  
-    setVerificationStatus('verifying');
-  
+
+    setVerificationStatus('verifying')
+
     try {
-      const genAI = new GoogleGenerativeAI(geminiApiKey!);
-      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-  
-      const base64Data = readFileAsBase64(verificationImage);
-  
+      const genAI = new GoogleGenerativeAI(geminiApiKey!)
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+
+      const base64Data = readFileAsBase64(verificationImage)
+
       const imageParts = [
         {
           inlineData: {
             data: base64Data,
-            mimeType: 'image/jpeg', // Adjust this if needed
+            mimeType: 'image/jpeg', // Adjust this if you know the exact type
           },
         },
-      ];
-  
+      ]
+
       const prompt = `You are an expert in waste management and recycling. Analyze this image and provide:
         1. Confirm if the waste type matches: ${selectedTask.wasteType}
         2. Estimate if the quantity matches: ${selectedTask.amount}
         3. Your confidence level in this assessment (as a percentage)
         
-        Respond in JSON format only, without including Markdown formatting or backticks, like this:
+        Respond in JSON format like this:
         {
           "wasteTypeMatch": true/false,
           "quantityMatch": true/false,
           "confidence": confidence level as a number between 0 and 1
-        }`;
-  
-      const result = await model.generateContent([prompt, ...imageParts]);
-      const response = await result.response;
-      const text = await response.text();
-  
-      // Clean up and parse the response
-      let cleanText = text.trim();
-      cleanText = cleanText.replace(/```json|```/g, ''); // Remove code block markers if present
-  
+        }`
+
+      const result = await model.generateContent([prompt, ...imageParts])
+      const response = await result.response
+      const text = response.text()
+
       try {
-        const parsedResult = JSON.parse(cleanText);
-  
+        const cleanedText = text.replace(/```json\s*|\s*```/g, '').trim()
+        const parsedResult = JSON.parse(cleanedText)
+
         setVerificationResult({
           wasteTypeMatch: parsedResult.wasteTypeMatch,
           quantityMatch: parsedResult.quantityMatch,
-          confidence: parsedResult.confidence,
-        });
-        setVerificationStatus('success');
-  
-        if (
-          parsedResult.wasteTypeMatch &&
-          parsedResult.quantityMatch &&
-          parsedResult.confidence > 0.7
-        ) {
-          await handleStatusChange(selectedTask.id, 'verified');
-          const earnedReward = Math.floor(Math.random() * 50) + 10; // Random reward between 10 and 59
-  
+          confidence: parsedResult.confidence
+        })
+        setVerificationStatus('success')
+
+        if (parsedResult.wasteTypeMatch && parsedResult.quantityMatch && parsedResult.confidence > 0.7) {
+          await handleStatusChange(selectedTask.id, 'verified')
+          const earnedReward = Math.floor(Math.random() * 50) + 10 // Random reward between 10 and 59
+
           // Save the reward
-          await saveReward(user.id, earnedReward);
-  
+          await saveReward(user.id, earnedReward)
+
           // Save the collected waste
-          await saveCollectedWaste(selectedTask.id, user.id, parsedResult);
-  
-          setReward(earnedReward);
+          await saveCollectedWaste(selectedTask.id, user.id, parsedResult)
+
+          setReward(earnedReward)
           toast.success(`Verification successful! You earned ${earnedReward} tokens!`, {
             duration: 5000,
             position: 'top-center',
-          });
+          })
         } else {
           toast.error('Verification failed. The collected waste does not match the reported waste.', {
             duration: 5000,
             position: 'top-center',
-          });
+          })
         }
       } catch (error) {
-        console.error('Failed to parse JSON response:', cleanText, error);
-        setVerificationStatus('failure');
+        console.error('Failed to parse JSON response:', text)
+        setVerificationStatus('failure')
       }
     } catch (error) {
-      console.error('Error verifying waste:', error);
-      setVerificationStatus('failure');
+      console.error('Error verifying waste:', error)
+      setVerificationStatus('failure')
     }
-  };
-  
+  }
+
 
   const filteredTasks = tasks.filter(task =>
     task.location.toLowerCase().includes(searchTerm.toLowerCase())
@@ -292,7 +285,7 @@ export default function CollectPage() {
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-4xl mx-auto">
       <h1 className="text-3xl font-semibold mb-6 text-gray-800">Waste Collection Tasks</h1>
-      
+
       <div className="mb-4 flex items-center">
         <Input
           type="text"
@@ -325,7 +318,7 @@ export default function CollectPage() {
                 <div className="grid grid-cols-3 gap-2 text-sm text-gray-600 mb-3">
                   <div className="flex items-center relative">
                     <Trash2 className="w-4 h-4 mr-2 text-gray-500" />
-                    <span 
+                    <span
                       onMouseEnter={() => setHoveredWasteType(task.wasteType)}
                       onMouseLeave={() => setHoveredWasteType(null)}
                       className="cursor-pointer"

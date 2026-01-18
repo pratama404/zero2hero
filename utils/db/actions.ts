@@ -1,24 +1,54 @@
+'use server'
+
 import { db } from './dbConfig';
-import { Users, Reports, Rewards, CollectedWastes, Notifications, Transactions } from './schema';
+import { Users, Reports, Rewards, CollectedWastes, Notifications, Transactions, UserProfiles } from './schema';
 import { eq, sql, and, desc, ne } from 'drizzle-orm';
 
 export async function createUser(email: string, name: string) {
   try {
-    const [user] = await db.insert(Users).values({ email, name }).returning().execute();
+    console.log('Creating user:', { email, name });
+
+    // Check if user already exists
+    const existingUser = await getUserByEmail(email);
+    if (existingUser) {
+      console.log('User already exists:', existingUser);
+      return existingUser;
+    }
+
+    console.log('Inserting new user into database...');
+    const [user] = await db.insert(Users).values({
+      email,
+      name
+    }).returning();
+
+    console.log('User created successfully:', user);
     return user;
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error creating user:", error);
-    return null;
+
+    // If it's a unique constraint error, try to get existing user
+    if (error.message?.includes('unique') || error.code === '23505') {
+      console.log('Unique constraint error, fetching existing user...');
+      const existingUser = await getUserByEmail(email);
+      if (existingUser) {
+        return existingUser;
+      }
+    }
+
+    throw error;
   }
 }
 
 export async function getUserByEmail(email: string) {
   try {
-    const [user] = await db.select().from(Users).where(eq(Users.email, email)).execute();
+    console.log('Fetching user by email:', email);
+    const users = await db.select().from(Users).where(eq(Users.email, email));
+    const user = users[0] || null;
+    console.log('User found:', user ? 'Yes' : 'No', user?.id);
     return user;
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error fetching user by email:", error);
-    return null;
+    throw error;
   }
 }
 
@@ -99,9 +129,12 @@ export async function getOrCreateReward(userId: number) {
 
 export async function updateRewardPoints(userId: number, pointsToAdd: number) {
   try {
+    // Ensure user has a reward record first
+    await getOrCreateReward(userId);
+
     const [updatedReward] = await db
       .update(Rewards)
-      .set({ 
+      .set({
         points: sql`${Rewards.points} + ${pointsToAdd}`,
         updatedAt: new Date()
       })
@@ -257,7 +290,7 @@ export async function saveReward(userId: number, amount: number) {
       })
       .returning()
       .execute();
-    
+
     // Create a transaction for this reward
     await createTransaction(userId, 'earned_collect', amount, 'Points earned for collecting waste');
 
@@ -308,21 +341,32 @@ export async function updateTaskStatus(reportId: number, newStatus: string, coll
 
 export async function getAllRewards() {
   try {
-    const rewards = await db
-      .select({
-        id: Rewards.id,
-        userId: Rewards.userId,
-        points: Rewards.points,
-        level: Rewards.level,
-        createdAt: Rewards.createdAt,
-        userName: Users.name,
-      })
-      .from(Rewards)
-      .leftJoin(Users, eq(Rewards.userId, Users.id))
-      .orderBy(desc(Rewards.points))
-      .execute();
+    // Get all users with their total points from transactions
+    const allUsers = await db.select().from(Users).execute();
+    const leaderboardData = [];
 
-    return rewards;
+    for (const user of allUsers) {
+      const transactions = await getRewardTransactions(user.id);
+      const totalPoints = transactions.reduce((acc, transaction) => {
+        return transaction.type.startsWith('earned') ? acc + transaction.amount : acc - transaction.amount;
+      }, 0);
+
+      if (totalPoints > 0) {
+        leaderboardData.push({
+          id: user.id,
+          userId: user.id,
+          points: totalPoints,
+          level: Math.floor(totalPoints / 100) + 1, // Level based on points
+          createdAt: user.createdAt,
+          userName: user.name,
+        });
+      }
+    }
+
+    // Sort by points in descending order
+    leaderboardData.sort((a, b) => b.points - a.points);
+
+    return leaderboardData;
   } catch (error) {
     console.error("Error fetching all rewards:", error);
     return [];
@@ -364,7 +408,7 @@ export async function getRewardTransactions(userId: number) {
 export async function getAvailableRewards(userId: number) {
   try {
     console.log('Fetching available rewards for user:', userId);
-    
+
     // Get user's total points
     const userTransactions = await getRewardTransactions(userId);
     const userPoints = userTransactions.reduce((total, transaction) => {
@@ -425,11 +469,11 @@ export async function createTransaction(userId: number, type: 'earned_report' | 
 export async function redeemReward(userId: number, rewardId: number) {
   try {
     const userReward = await getOrCreateReward(userId) as any;
-    
+
     if (rewardId === 0) {
       // Redeem all points
       const [updatedReward] = await db.update(Rewards)
-        .set({ 
+        .set({
           points: 0,
           updatedAt: new Date(),
         })
@@ -450,7 +494,7 @@ export async function redeemReward(userId: number, rewardId: number) {
       }
 
       const [updatedReward] = await db.update(Rewards)
-        .set({ 
+        .set({
           points: sql`${Rewards.points} - ${availableReward[0].points}`,
           updatedAt: new Date(),
         })
@@ -475,4 +519,69 @@ export async function getUserBalance(userId: number): Promise<number> {
     return transaction.type.startsWith('earned') ? acc + transaction.amount : acc - transaction.amount
   }, 0);
   return Math.max(balance, 0); // Ensure balance is never negative
+}
+
+export async function getUserProfile(userId: number) {
+  try {
+    const [profile] = await db.select().from(UserProfiles).where(eq(UserProfiles.userId, userId));
+    return profile || null;
+  } catch (error) {
+    console.error("Error fetching user profile:", error);
+    return null;
+  }
+}
+
+export async function createUserProfile(userId: number) {
+  try {
+    const [profile] = await db
+      .insert(UserProfiles)
+      .values({ userId })
+      .returning();
+    return profile;
+  } catch (error) {
+    console.error("Error creating user profile:", error);
+    return null;
+  }
+}
+
+export async function updateUserProfile(userId: number, profileData: {
+  phone?: string;
+  address?: string;
+  notifications?: boolean;
+  profileImage?: string;
+}) {
+  try {
+    // Ensure profile exists
+    let profile = await getUserProfile(userId);
+    if (!profile) {
+      profile = await createUserProfile(userId);
+    }
+
+    const [updatedProfile] = await db
+      .update(UserProfiles)
+      .set({
+        ...profileData,
+        updatedAt: new Date()
+      })
+      .where(eq(UserProfiles.userId, userId))
+      .returning();
+    return updatedProfile;
+  } catch (error) {
+    console.error("Error updating user profile:", error);
+    throw error;
+  }
+}
+
+export async function updateUserName(userId: number, name: string) {
+  try {
+    const [updatedUser] = await db
+      .update(Users)
+      .set({ name })
+      .where(eq(Users.id, userId))
+      .returning();
+    return updatedUser;
+  } catch (error) {
+    console.error("Error updating user name:", error);
+    throw error;
+  }
 }

@@ -1,9 +1,12 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { Coins, ArrowUpRight, ArrowDownRight, Gift, AlertCircle, Loader } from 'lucide-react'
+import { Coins, ArrowUpRight, ArrowDownRight, Gift, AlertCircle, Loader, Check, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { getUserByEmail, getRewardTransactions, getAvailableRewards, redeemReward, createTransaction } from '@/utils/db/actions'
+import { getUserByEmail, getRewardTransactions, getAvailableRewards, redeemReward, createTransaction, createUser } from '@/utils/db/actions'
 import { toast } from 'react-hot-toast'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 
 type Transaction = {
   id: number
@@ -27,29 +30,36 @@ export default function RewardsPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [rewards, setRewards] = useState<Reward[]>([])
   const [loading, setLoading] = useState(true)
+  const [showSuccessModal, setShowSuccessModal] = useState(false)
+  const [redeemedItem, setRedeemedItem] = useState<{ type: string; code?: string; message: string } | null>(null)
 
   useEffect(() => {
     const fetchUserDataAndRewards = async () => {
       setLoading(true)
       try {
         const userEmail = localStorage.getItem('userEmail')
+        const userName = localStorage.getItem('userName') || 'Anonymous User'
+
         if (userEmail) {
-          const fetchedUser = await getUserByEmail(userEmail)
+          let fetchedUser = await getUserByEmail(userEmail)
+
+          if (!fetchedUser) {
+            fetchedUser = await createUser(userEmail, userName)
+          }
+
           if (fetchedUser) {
             setUser(fetchedUser)
             const fetchedTransactions = await getRewardTransactions(fetchedUser.id)
             setTransactions(fetchedTransactions as Transaction[])
             const fetchedRewards = await getAvailableRewards(fetchedUser.id)
-            setRewards(fetchedRewards.filter(r => r.cost > 0)) // Filter out rewards with 0 points
+            setRewards(fetchedRewards.filter(r => r.cost > 0))
             const calculatedBalance = fetchedTransactions.reduce((acc, transaction) => {
               return transaction.type.startsWith('earned') ? acc + transaction.amount : acc - transaction.amount
             }, 0)
-            setBalance(Math.max(calculatedBalance, 0)) // Ensure balance is never negative
+            setBalance(Math.max(calculatedBalance, 0))
           } else {
-            toast.error('User not found. Please log in again.')
+            toast.error('Failed to load user data. Please try logging in again.')
           }
-        } else {
-          toast.error('User not logged in. Please log in.')
         }
       } catch (error) {
         console.error('Error fetching user data and rewards:', error)
@@ -60,40 +70,76 @@ export default function RewardsPage() {
     }
 
     fetchUserDataAndRewards()
+
+    const handleUserLogin = () => fetchUserDataAndRewards()
+    window.addEventListener('userLoggedIn', handleUserLogin)
+    return () => window.removeEventListener('userLoggedIn', handleUserLogin)
   }, [])
 
-  const handleRedeemReward = async (rewardId: number) => {
-    if (!user) {
-      toast.error('Please log in to redeem rewards.')
-      return
-    }
+  const refreshUserData = async () => {
+    if (user) {
+      const fetchedUser = await getUserByEmail(user.email);
+      if (fetchedUser) {
+        const fetchedTransactions = await getRewardTransactions(fetchedUser.id);
+        setTransactions(fetchedTransactions as Transaction[]);
+        const fetchedRewards = await getAvailableRewards(fetchedUser.id);
+        setRewards(fetchedRewards.filter(r => r.cost > 0));
 
-    const reward = rewards.find(r => r.id === rewardId)
-    if (reward && balance >= reward.cost && reward.cost > 0) {
-      try {
-        if (balance < reward.cost) {
-          toast.error('Insufficient balance to redeem this reward')
-          return
-        }
-
-        // Update database
-        await redeemReward(user.id, rewardId);
-        
-        // Create a new transaction record
-        await createTransaction(user.id, 'redeemed', reward.cost, `Redeemed ${reward.name}`);
-
-        // Refresh user data and rewards after redemption
-        await refreshUserData();
-
-        toast.success(`You have successfully redeemed: ${reward.name}`)
-      } catch (error) {
-        console.error('Error redeeming reward:', error)
-        toast.error('Failed to redeem reward. Please try again.')
+        const calculatedBalance = fetchedTransactions.reduce((acc, transaction) => {
+          return transaction.type.startsWith('earned') ? acc + transaction.amount : acc - transaction.amount
+        }, 0)
+        setBalance(Math.max(calculatedBalance, 0))
       }
-    } else {
-      toast.error('Insufficient balance or invalid reward cost')
     }
   }
+
+  const handleRedeemCustom = async (type: string, cost: number) => {
+    if (!user) {
+      toast.error('Please log in to redeem rewards.');
+      return;
+    }
+
+    if (balance < cost) {
+      toast.error(`You need ${cost} points but only have ${balance} points.`);
+      return;
+    }
+
+    try {
+      await createTransaction(user.id, 'redeemed', cost, `Redeemed ${type}`);
+
+      setBalance(prev => prev - cost);
+      setTransactions(prev => [{
+        id: Date.now(),
+        type: 'redeemed',
+        amount: cost,
+        description: `Redeemed ${type}`,
+        date: new Date().toISOString().split('T')[0]
+      }, ...prev]);
+
+      await refreshUserData();
+
+      // Handle different reward types
+      let message = '';
+      let code = '';
+
+      if (type === 'voucher') {
+        code = 'ECO-' + Math.random().toString(36).substring(2, 8).toUpperCase();
+        message = 'Use this code at checkout for your discount.';
+      } else if (type === 'tree') {
+        code = 'TREE-' + Math.floor(Math.random() * 10000);
+        message = 'Thank you! A new tree has been scheduled directly for planting.';
+      } else if (type === 'badge') {
+        message = "You've unlocked the Eco Champion Badge! It will appear on your profile.";
+      }
+
+      setRedeemedItem({ type: type === 'tree' ? 'Plant a Tree' : type === 'voucher' ? 'Recycling Voucher' : 'Eco Champion Badge', code, message });
+      setShowSuccessModal(true);
+
+    } catch (error) {
+      console.error('Error redeeming:', error);
+      toast.error('Failed to redeem. Please try again.');
+    }
+  };
 
   const handleRedeemAllPoints = async () => {
     if (!user) {
@@ -103,40 +149,30 @@ export default function RewardsPage() {
 
     if (balance > 0) {
       try {
-        // Update database
-        await redeemReward(user.id, 0);
-        
-        // Create a new transaction record
-        await createTransaction(user.id, 'redeemed', balance, 'Redeemed all points');
+        await createTransaction(user.id, 'redeemed', balance, 'Cashed out all points');
 
-        // Refresh user data and rewards after redemption
+        setBalance(0);
+        setTransactions(prev => [{
+          id: Date.now(),
+          type: 'redeemed',
+          amount: balance,
+          description: 'Cashed out all points',
+          date: new Date().toISOString().split('T')[0]
+        }, ...prev]);
+
         await refreshUserData();
 
-        toast.success(`You have successfully redeemed all your points!`);
+        setRedeemedItem({
+          type: 'Cash Out',
+          message: `Successfully processed withdrawal for ${balance} points. Funds will be transferred within 24 hours.`
+        });
+        setShowSuccessModal(true);
       } catch (error) {
-        console.error('Error redeeming all points:', error);
-        toast.error('Failed to redeem all points. Please try again.');
+        console.error('Error cashing out:', error);
+        toast.error('Failed to cash out. Please try again.');
       }
     } else {
-      toast.error('No points available to redeem')
-    }
-  }
-
-  const refreshUserData = async () => {
-    if (user) {
-      const fetchedUser = await getUserByEmail(user.email);
-      if (fetchedUser) {
-        const fetchedTransactions = await getRewardTransactions(fetchedUser.id);
-        setTransactions(fetchedTransactions as Transaction[]);
-        const fetchedRewards = await getAvailableRewards(fetchedUser.id);
-        setRewards(fetchedRewards.filter(r => r.cost > 0)); // Filter out rewards with 0 points
-        
-        // Recalculate balance
-        const calculatedBalance = fetchedTransactions.reduce((acc, transaction) => {
-          return transaction.type.startsWith('earned') ? acc + transaction.amount : acc - transaction.amount
-        }, 0)
-        setBalance(Math.max(calculatedBalance, 0)) // Ensure balance is never negative
-      }
+      toast.error('No points available to cash out');
     }
   }
 
@@ -147,9 +183,9 @@ export default function RewardsPage() {
   }
 
   return (
-    <div className="p-8 max-w-4xl mx-auto">
-      <h1 className="text-3xl font-semibold mb-6 text-gray-800">Rewards</h1>
-      
+    <div className="p-4 sm:p-6 lg:p-8 max-w-4xl mx-auto">
+      <h1 className="text-2xl sm:text-3xl font-semibold mb-6 text-gray-800">Rewards</h1>
+
       <div className="bg-white p-6 rounded-xl shadow-lg flex flex-col justify-between h-full border-l-4 border-green-500 mb-8">
         <h2 className="text-xl font-semibold mb-4 text-gray-800">Reward Balance</h2>
         <div className="flex items-center justify-between mt-auto">
@@ -163,7 +199,7 @@ export default function RewardsPage() {
         </div>
       </div>
 
-      <div className="grid md:grid-cols-2 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8">
         <div>
           <h2 className="text-2xl font-semibold mb-4 text-gray-800">Recent Transactions</h2>
           <div className="bg-white rounded-xl shadow-md overflow-hidden">
@@ -197,49 +233,118 @@ export default function RewardsPage() {
         <div>
           <h2 className="text-2xl font-semibold mb-4 text-gray-800">Available Rewards</h2>
           <div className="space-y-4">
-            {rewards.length > 0 ? (
-              rewards.map(reward => (
-                <div key={reward.id} className="bg-white p-4 rounded-xl shadow-md">
-                  <div className="flex justify-between items-center mb-2">
-                    <h3 className="text-lg font-semibold text-gray-800">{reward.name}</h3>
-                    <span className="text-green-500 font-semibold">{reward.cost} points</span>
-                  </div>
-                  <p className="text-gray-600 mb-2">{reward.description}</p>
-                  <p className="text-sm text-gray-500 mb-4">{reward.collectionInfo}</p>
-                  {reward.id === 0 ? (
-                    <div className="space-y-2">
-                      <Button 
-                        onClick={handleRedeemAllPoints}
-                        className="w-full bg-green-500 hover:bg-green-600 text-white"
-                        disabled={balance === 0}
-                      >
-                        <Gift className="w-4 h-4 mr-2" />
-                        Redeem All Points
-                      </Button>
-                    </div>
-                  ) : (
-                    <Button 
-                      onClick={() => handleRedeemReward(reward.id)}
-                      className="w-full bg-green-500 hover:bg-green-600 text-white"
-                      disabled={balance < reward.cost}
-                    >
-                      <Gift className="w-4 h-4 mr-2" />
-                      Redeem Reward
-                    </Button>
-                  )}
-                </div>
-              ))
-            ) : (
-              <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-md">
-                <div className="flex items-center">
-                  <AlertCircle className="h-6 w-6 text-yellow-400 mr-3" />
-                  <p className="text-yellow-700">No rewards available at the moment.</p>
-                </div>
+            <div className="bg-gray-50 p-6 rounded-xl shadow-md border border-gray-100 hover:shadow-lg transition-shadow duration-300">
+              <div className="flex justify-between items-start mb-4">
+                <h3 className="text-lg font-bold text-gray-800 flex items-center">
+                  <Gift className="w-5 h-5 mr-2 text-green-600" />
+                  Plant a Tree
+                </h3>
+                <span className="bg-green-100 text-green-800 text-xs font-semibold px-2.5 py-0.5 rounded">50 pts</span>
               </div>
-            )}
+              <p className="text-gray-600 text-sm mb-4">Contribute to global reforestation. We'll plant a tree in your name.</p>
+              <Button
+                onClick={() => handleRedeemCustom('tree', 50)}
+                className="w-full bg-green-600 hover:bg-green-700 text-white transition-colors"
+                disabled={balance < 50}
+              >
+                Redeem
+              </Button>
+            </div>
+
+            <div className="bg-gray-50 p-6 rounded-xl shadow-md border border-gray-100 hover:shadow-lg transition-shadow duration-300">
+              <div className="flex justify-between items-start mb-4">
+                <h3 className="text-lg font-bold text-gray-800 flex items-center">
+                  <Gift className="w-5 h-5 mr-2 text-blue-600" />
+                  Recycling Voucher
+                </h3>
+                <span className="bg-blue-100 text-blue-800 text-xs font-semibold px-2.5 py-0.5 rounded">30 pts</span>
+              </div>
+              <p className="text-gray-600 text-sm mb-4">20% off at our partner eco-stores.</p>
+              <Button
+                onClick={() => handleRedeemCustom('voucher', 30)}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white transition-colors"
+                disabled={balance < 30}
+              >
+                Redeem
+              </Button>
+            </div>
+
+            <div className="bg-gray-50 p-6 rounded-xl shadow-md border border-gray-100 hover:shadow-lg transition-shadow duration-300">
+              <div className="flex justify-between items-start mb-4">
+                <h3 className="text-lg font-bold text-gray-800 flex items-center">
+                  <Gift className="w-5 h-5 mr-2 text-purple-600" />
+                  Eco Champion Badge
+                </h3>
+                <span className="bg-purple-100 text-purple-800 text-xs font-semibold px-2.5 py-0.5 rounded">100 pts</span>
+              </div>
+              <p className="text-gray-600 text-sm mb-4">Showcase your commitment with an exclusive profile badge.</p>
+              <Button
+                onClick={() => handleRedeemCustom('badge', 100)}
+                className="w-full bg-purple-600 hover:bg-purple-700 text-white transition-colors"
+                disabled={balance < 100}
+              >
+                Redeem
+              </Button>
+            </div>
+
+            <div className="bg-gray-50 p-6 rounded-xl shadow-md border border-gray-100 hover:shadow-lg transition-shadow duration-300">
+              <div className="flex justify-between items-start mb-4">
+                <h3 className="text-lg font-bold text-gray-800 flex items-center">
+                  <Coins className="w-5 h-5 mr-2 text-yellow-600" />
+                  Cash Out
+                </h3>
+                <span className="bg-yellow-100 text-yellow-800 text-xs font-semibold px-2.5 py-0.5 rounded">All pts</span>
+              </div>
+              <p className="text-gray-600 text-sm mb-4">Convert your hard-earned points into real cash.</p>
+              <Button
+                onClick={handleRedeemAllPoints}
+                className="w-full bg-yellow-600 hover:bg-yellow-700 text-white transition-colors"
+                disabled={balance === 0}
+              >
+                Cash Out
+              </Button>
+            </div>
           </div>
         </div>
       </div>
+
+      {showSuccessModal && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50 p-4">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full shadow-2xl relative animate-fadeIn scale-100 transition-transform">
+            <button
+              onClick={() => setShowSuccessModal(false)}
+              className="absolute top-4 right-4 text-gray-500 hover:text-gray-700"
+            >
+              <X className="h-6 w-6" />
+            </button>
+            <div className="text-center">
+              <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-green-100 mb-4">
+                <Check className="h-8 w-8 text-green-600" />
+              </div>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">Redemption Successful!</h3>
+              <div className="bg-gray-50 p-4 rounded-lg mb-6 border border-gray-100">
+                <p className="text-sm text-gray-500 mb-2">You have successfully redeemed:</p>
+                <p className="text-lg font-semibold text-gray-800 mb-3">{redeemedItem?.type}</p>
+                {redeemedItem?.code && (
+                  <div className="bg-white border border-dashed border-gray-300 p-3 rounded mb-2">
+                    <p className="text-xs text-gray-500 mb-1">YOUR CODE</p>
+                    <p className="text-xl font-mono font-bold tracking-wider text-green-600 selection:bg-green-100">
+                      {redeemedItem.code}
+                    </p>
+                  </div>
+                )}
+                <p className="text-sm text-gray-600 mt-3">{redeemedItem?.message}</p>
+              </div>
+              <Button
+                onClick={() => setShowSuccessModal(false)}
+                className="w-full bg-green-600 hover:bg-green-700 text-white"
+              >
+                Close
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

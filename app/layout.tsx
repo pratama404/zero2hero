@@ -5,6 +5,7 @@ import { Inter } from 'next/font/google'
 import "./globals.css"
 import Header from "@/components/Header"
 import Sidebar from "@/components/Sidebar"
+
 import 'leaflet/dist/leaflet.css'
 import { Toaster } from 'react-hot-toast'
 import { getAvailableRewards, getUserByEmail } from '@/utils/db/actions'
@@ -26,11 +27,11 @@ export default function RootLayout({
         if (userEmail) {
           const user = await getUserByEmail(userEmail)
           console.log('user from layout', user);
-          
+
           if (user) {
             const availableRewards = await getAvailableRewards(user.id) as any
             console.log('availableRewards from layout', availableRewards);
-                        setTotalEarnings(availableRewards)
+            setTotalEarnings(availableRewards)
           }
         }
       } catch (error) {
@@ -54,6 +55,7 @@ export default function RootLayout({
           </div>
         </div>
         <Toaster />
+
       </body>
     </html>
   )

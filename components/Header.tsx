@@ -5,11 +5,11 @@ import Link from "next/link"
 import { usePathname } from 'next/navigation'
 import { Button } from "@/components/ui/button"
 import { Menu, Coins, Leaf, Search, Bell, User, ChevronDown, LogIn, LogOut } from "lucide-react"
-import { 
-  DropdownMenu, 
-  DropdownMenuContent, 
-  DropdownMenuItem, 
-  DropdownMenuTrigger 
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
 import { Badge } from "@/components/ui/badge"
 import { Web3Auth } from "@web3auth/modal"
@@ -18,13 +18,14 @@ import { EthereumPrivateKeyProvider } from "@web3auth/ethereum-provider"
 import { useMediaQuery } from "@/hooks/useMediaQuery"
 import { createUser, getUnreadNotifications, markNotificationAsRead, getUserByEmail, getUserBalance } from "@/utils/db/actions"
 
-const clientId = "BJKdDFkNtkWX87XqkuWrDu4rbkSvWyQZ5lswS0ucINxxcN0inRVW8zzKAywPPzgiOHP7_3PcfFwfpvcQvSdaLRs";
+//const clientId = "BJKdDFkNtkWX87XqkuWrDu4rbkSvWyQZ5lswS0ucINxxcN0inRVW8zzKAywPPzgiOHP7_3PcfFwfpvcQvSdaLRs";
 //const clientId = "BGyxI-wfyAjbHURKNdWNOcHQYA4hhJ9EZ8E5n0jAo7p07N31hdaMA3LUC9oVzuComojU6P-2vYyvUwmbj1FKNVs";
+const clientId = process.env.NEXT_PUBLIC_WEB3_AUTH_CLIENT_ID;
 
 const chainConfig = {
   chainNamespace: CHAIN_NAMESPACES.EIP155,
   chainId: "0xaa36a7",
-  rpcTarget: "https://rpc.ankr.com/eth_sepolia",
+  rpcTarget: "https://ethereum-sepolia-rpc.publicnode.com",
   displayName: "Ethereum Sepolia Testnet",
   blockExplorerUrl: "https://sepolia.etherscan.io",
   ticker: "ETH",
@@ -38,7 +39,7 @@ const privateKeyProvider = new EthereumPrivateKeyProvider({
 
 const web3auth = new Web3Auth({
   clientId,
-  web3AuthNetwork: WEB3AUTH_NETWORK.TESTNET, // Changed from SAPPHIRE_MAINNET to TESTNET
+  web3AuthNetwork: WEB3AUTH_NETWORK.SAPPHIRE_DEVNET,
   privateKeyProvider,
 });
 
@@ -57,12 +58,19 @@ export default function Header({ onMenuClick, totalEarnings }: HeaderProps) {
   const isMobile = useMediaQuery("(max-width: 768px)")
   const [balance, setBalance] = useState(0)
 
-  console.log('user info', userInfo);
-  
+
+
   useEffect(() => {
     const init = async () => {
       try {
-        await web3auth.initModal();
+        // Create a timeout promise that rejects after 10 seconds
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error("Web3Auth initialization timed out")), 10000);
+        });
+
+        // Race the initialization against the timeout
+        await Promise.race([web3auth.initModal(), timeoutPromise]);
+
         setProvider(web3auth.provider);
 
         if (web3auth.connected) {
@@ -75,7 +83,6 @@ export default function Header({ onMenuClick, totalEarnings }: HeaderProps) {
               await createUser(user.email, user.name || 'Anonymous User');
             } catch (error) {
               console.error("Error creating user:", error);
-              // Handle the error appropriately, maybe show a message to the user
             }
           }
         }
@@ -144,13 +151,20 @@ export default function Header({ onMenuClick, totalEarnings }: HeaderProps) {
       setLoggedIn(true);
       const user = await web3auth.getUserInfo();
       setUserInfo(user);
+
       if (user.email) {
         localStorage.setItem('userEmail', user.email);
+        localStorage.setItem('userName', user.name || 'Anonymous User');
+
         try {
-          await createUser(user.email, user.name || 'Anonymous User');
+          const dbUser = await createUser(user.email, user.name || 'Anonymous User');
+          if (dbUser) {
+            console.log('User synced to database:', dbUser);
+            // Trigger a custom event to notify other components
+            window.dispatchEvent(new CustomEvent('userLoggedIn', { detail: dbUser }));
+          }
         } catch (error) {
-          console.error("Error creating user:", error);
-          // Handle the error appropriately, maybe show a message to the user
+          console.error("Error creating/syncing user:", error);
         }
       }
     } catch (error) {
@@ -192,7 +206,7 @@ export default function Header({ onMenuClick, totalEarnings }: HeaderProps) {
 
   const handleNotificationClick = async (notificationId: number) => {
     await markNotificationAsRead(notificationId);
-    setNotifications(prevNotifications => 
+    setNotifications(prevNotifications =>
       prevNotifications.filter(notification => notification.id !== notificationId)
     );
   };
@@ -248,7 +262,7 @@ export default function Header({ onMenuClick, totalEarnings }: HeaderProps) {
             <DropdownMenuContent align="end" className="w-64">
               {notifications.length > 0 ? (
                 notifications.map((notification) => (
-                  <DropdownMenuItem 
+                  <DropdownMenuItem
                     key={notification.id}
                     onClick={() => handleNotificationClick(notification.id)}
                   >

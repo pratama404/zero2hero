@@ -64,3 +64,15 @@ export const Transactions = pgTable("transactions", {
   description: text("description").notNull(),
   date: timestamp("date").defaultNow().notNull(),
 });
+
+// User Profiles table (for additional user data)
+export const UserProfiles = pgTable("user_profiles", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => Users.id).notNull().unique(),
+  phone: varchar("phone", { length: 20 }),
+  address: text("address"),
+  profileImage: text("profile_image"),
+  notifications: boolean("notifications").default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
